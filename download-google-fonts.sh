@@ -35,7 +35,16 @@ API_KEY="AIzaSyDilHfKDiN9uD4sbCJm8fQ2B_N2C6XNQEE"
 FONTS_DIR="${FONTS_DIR:-/opt/photopea-fonts}"
 
 # Criar diretório se não existir
-mkdir -p "$FONTS_DIR"
+if [ ! -d "$FONTS_DIR" ]; then
+    if [ -w "$(dirname "$FONTS_DIR")" ]; then
+        mkdir -p "$FONTS_DIR"
+    else
+        print_color "$YELLOW" "⚠️  Diretório requer permissões elevadas"
+        sudo mkdir -p "$FONTS_DIR"
+        sudo chown $USER:$USER "$FONTS_DIR"
+        print_color "$GREEN" "✓ Diretório criado com sucesso!"
+    fi
+fi
 
 print_color "$GREEN" "📁 Diretório de destino: $FONTS_DIR"
 echo ""
@@ -69,32 +78,57 @@ fi
 
 echo ""
 
-# Buscar lista de fontes
-print_color "$YELLOW" "🔎 Buscando lista de fontes do Google Fonts..."
-FONTS_JSON=$(curl -s "https://www.googleapis.com/webfonts/v1/webfonts?key=$API_KEY")
+# Lista completa de fontes populares (fallback)
+POPULAR_FONTS=(
+    "Roboto" "Open Sans" "Lato" "Montserrat" "Oswald" "Raleway" "Poppins"
+    "Ubuntu" "Nunito" "Playfair Display" "Inter" "Bebas Neue" "Merriweather"
+    "PT Sans" "Noto Sans" "Rubik" "Mukta" "Source Sans Pro" "Work Sans"
+    "Quicksand" "Fira Sans" "Karla" "Libre Franklin" "Libre Baskerville"
+    "Manrope" "DM Sans" "Space Grotesk" "Plus Jakarta Sans" "Outfit"
+    "Noto Serif" "Crimson Text" "Bitter" "Archivo" "Barlow" "Josefin Sans"
+    "Inconsolata" "Fira Code" "JetBrains Mono" "Source Code Pro" "IBM Plex Sans"
+    "IBM Plex Mono" "Lexend" "Figtree" "Sora" "Epilogue" "Albert Sans"
+    "Red Hat Display" "Red Hat Text" "Space Mono" "Commissioner" "Urbanist"
+    "Heebo" "Mulish" "Exo 2" "Cabin" "Titillium Web" "Anton" "Dancing Script"
+    "Pacifico" "Satisfy" "Righteous" "Bebas" "Permanent Marker" "Lobster"
+    "Comfortaa" "Abel" "Zilla Slab" "Hind" "Overpass" "Arimo" "Varela Round"
+    "Dosis" "Passion One" "Architects Daughter" "Alfa Slab One" "Francois One"
+    "Abril Fatface" "Yellowtail" "Courgette" "Great Vibes" "Tangerine"
+    "Shadows Into Light" "Amatic SC" "Indie Flower" "Caveat" "Kalam"
+    "Patrick Hand" "Handlee" "Just Another Hand" "Covered By Your Grace"
+    "Rock Salt" "Sue Ellen Francisco" "Reenie Beanie" "Walter Turncoat"
+    "Neucha" "Bad Script" "Marck Script" "Annie Use Your Telescope"
+    "Rajdhani" "Orbitron" "Bungee" "Press Start 2P" "VT323" "Audiowide"
+    "Syncopate" "Monoton" "Poiret One" "Gruppo" "Michroma" "Electrolize"
+    "Teko" "Yantramanav" "Hind Madurai" "Barlow Condensed" "Fjalla One"
+    "Saira Condensed" "Yanone Kaffeesatz" "Asap Condensed" "PT Sans Narrow"
+    "Nanum Gothic" "Noto Sans JP" "Noto Sans KR" "Noto Sans TC" "Noto Sans SC"
+    "M PLUS Rounded 1c" "Sawarabi Gothic" "Kosugi Maru" "Sawarabi Mincho"
+    "Philosopher" "Cormorant" "Cardo" "Spectral" "Alegreya" "Lora"
+    "Old Standard TT" "EB Garamond" "Vollkorn" "Gentium Book Basic"
+    "Cinzel" "Sorts Mill Goudy" "Neuton" "Adamina" "Judson" "Fanwood Text"
+    "Cantata One" "Bentham" "Podkova" "Proza Libre" "Copse" "Poly"
+    "Amiri" "Amethysta" "Goudy Bookletter 1911" "Unna" "Cambo"
+)
 
-if [ -z "$FONTS_JSON" ] || ! echo "$FONTS_JSON" | jq empty 2>/dev/null; then
-    print_color "$RED" "❌ Erro ao buscar fontes da API."
-    print_color "$YELLOW" "📋 Usando lista de fontes populares..."
-    
-    FONT_FAMILIES=(
-        "Roboto" "Open Sans" "Lato" "Montserrat" "Oswald" "Raleway" "Poppins"
-        "Ubuntu" "Nunito" "Playfair Display" "Inter" "Bebas Neue" "Merriweather"
-        "PT Sans" "Noto Sans" "Rubik" "Mukta" "Source Sans Pro" "Work Sans"
-        "Quicksand" "Fira Sans" "Karla" "Libre Franklin" "Libre Baskerville"
-        "Manrope" "DM Sans" "Space Grotesk" "Plus Jakarta Sans" "Outfit"
-        "Noto Serif" "Crimson Text" "Bitter" "Archivo" "Barlow" "Josefin Sans"
-        "Inconsolata" "Fira Code" "JetBrains Mono" "Source Code Pro" "IBM Plex Sans"
-        "IBM Plex Mono" "Lexend" "Figtree" "Sora" "Epilogue" "Albert Sans"
-        "Red Hat Display" "Red Hat Text" "Space Mono" "Commissioner" "Urbanist"
-        "Heebo" "Mulish" "Exo 2" "Cabin" "Titillium Web" "Anton" "Dancing Script"
-        "Pacifico" "Satisfy" "Righteous" "Bebas" "Permanent Marker" "Lobster"
-    )
-    TOTAL_FONTS=${#FONT_FAMILIES[@]}
+# Buscar lista de fontes da API
+print_color "$YELLOW" "🔎 Buscando lista de fontes do Google Fonts..."
+FONTS_JSON=$(curl -s "https://www.googleapis.com/webfonts/v1/webfonts?key=$API_KEY" 2>/dev/null)
+
+if [ -n "$FONTS_JSON" ] && echo "$FONTS_JSON" | jq -e '.items' >/dev/null 2>&1; then
+    mapfile -t FONT_FAMILIES < <(echo "$FONTS_JSON" | jq -r '.items[].family' 2>/dev/null)
+    if [ ${#FONT_FAMILIES[@]} -gt 0 ]; then
+        TOTAL_FONTS=${#FONT_FAMILIES[@]}
+        print_color "$GREEN" "✓ Encontradas $TOTAL_FONTS fontes da API!"
+    else
+        FONT_FAMILIES=("${POPULAR_FONTS[@]}")
+        TOTAL_FONTS=${#FONT_FAMILIES[@]}
+        print_color "$YELLOW" "⚠️  API não retornou dados. Usando lista de ${TOTAL_FONTS} fontes populares."
+    fi
 else
-    mapfile -t FONT_FAMILIES < <(echo "$FONTS_JSON" | jq -r '.items[].family')
+    FONT_FAMILIES=("${POPULAR_FONTS[@]}")
     TOTAL_FONTS=${#FONT_FAMILIES[@]}
-    print_color "$GREEN" "✓ Encontradas $TOTAL_FONTS fontes disponíveis!"
+    print_color "$YELLOW" "⚠️  API indisponível. Usando lista de ${TOTAL_FONTS} fontes populares."
 fi
 
 echo ""
